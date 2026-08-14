@@ -1,13 +1,25 @@
+"""Tests for BotRepository.list_strategies and create_strategy.
+
+These back the strategy dropdowns in AddBotDialog / BotDetailDialog, so
+the main things worth pinning down are: the list is always usably sorted,
+and name collisions are handled predictably.
+"""
+
 import pytest
 
 from backend.exceptions import ValidationError
 
 
 def test_list_strategies_empty_when_none_seeded(repo):
+    # The `repo` fixture deliberately does NOT seed default strategies
+    # (that's `seeded_repo`), so a fresh repository starts with none.
     assert repo.list_strategies() == []
 
 
 def test_list_strategies_sorted_case_insensitive(repo):
+    # Inserted out of alphabetical AND mixed-case order -- the query must
+    # sort case-insensitively (COLLATE NOCASE) for the dropdown to make
+    # sense to a user.
     repo.create_strategy("banana")
     repo.create_strategy("Apple")
     repo.create_strategy("cherry")
@@ -17,6 +29,8 @@ def test_list_strategies_sorted_case_insensitive(repo):
 
 
 def test_create_strategy_success(repo):
+    # Confirms the returned dict shape includes every field the caller
+    # supplied, not just strategy_name.
     s = repo.create_strategy("Trend Following", market_type="stocks", strategy_description="desc")
     assert s["strategy_name"] == "Trend Following"
     assert s["market_type"] == "stocks"
@@ -24,11 +38,14 @@ def test_create_strategy_success(repo):
 
 
 def test_create_strategy_blank_name_raises_validation_error(repo):
+    # Whitespace-only counts as blank once stripped.
     with pytest.raises(ValidationError):
         repo.create_strategy("   ")
 
 
 def test_create_strategy_duplicate_name_raises_validation_error(repo):
+    # strategy_type.strategy_name is UNIQUE -- the raw sqlite3.IntegrityError
+    # from that constraint must be translated into the domain ValidationError.
     repo.create_strategy("Momentum")
     with pytest.raises(ValidationError):
         repo.create_strategy("Momentum")
