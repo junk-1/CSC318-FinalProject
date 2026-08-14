@@ -1,3 +1,9 @@
+"""Tests for backend/hashing.sha256_bytes() -- the single hashing function
+underpinning both content-addressed LMDB storage and the integrity check
+in BotRepository.get_code(). Kept simple deliberately: this is a one-line
+wrapper around hashlib, so the tests just confirm it behaves like one.
+"""
+
 import hashlib
 import string
 
@@ -31,6 +37,8 @@ def test_sha256_bytes_differs_for_different_input():
 
 
 def test_sha256_bytes_returns_lowercase_hex_string_of_length_64():
+    # This exact shape matters: the result is stored as SQLite TEXT and used
+    # directly as an LMDB key, so it must be a plain hex string, not bytes.
     digest = sha256_bytes(b"anything")
     assert len(digest) == 64
     assert set(digest) <= set(string.hexdigits.lower())

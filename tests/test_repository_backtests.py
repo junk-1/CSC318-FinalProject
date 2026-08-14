@@ -1,9 +1,19 @@
+"""Tests for BotRepository's backtest-document methods: create_backtest,
+list_backtests, get_backtest_doc, delete_backtest.
+
+Backtest docs deliberately behave differently from code versions in two
+ways this file pins down: they're never hash-reverified on read, and
+they're never content-deduped (fresh uuid4 key every time) -- see
+repository.py's module docstring for why.
+"""
+
 import pytest
 
 from backend.exceptions import NotFoundError
 
 
 def test_create_backtest_success(repo, make_bot):
+    # Confirms every optional field round-trips through the returned dict.
     bot = make_bot()
     bt = repo.create_backtest(
         bot["bot_id"], b"report bytes", "report.csv",
@@ -47,6 +57,8 @@ def test_list_backtests_empty_for_bot_with_none(repo, make_bot):
 
 
 def test_get_backtest_doc_roundtrip(repo, make_bot):
+    # Mirrors get_code()'s (bytes, source_filename) return shape so the
+    # GUI's "Export" button can restore the original file extension.
     bot = make_bot()
     bt = repo.create_backtest(bot["bot_id"], b"doc content", "report.csv")
 
@@ -74,6 +86,8 @@ def test_get_backtest_doc_missing_blob_raises_not_found_not_integrity_error(
 
 
 def test_delete_backtest_removes_row_and_blob(repo, sqlite_conn, lmdb_store, make_bot):
+    # SQL row removed first, then the LMDB blob -- consistent with the
+    # delete-ordering convention documented in repository.py.
     bot = make_bot()
     bt = repo.create_backtest(bot["bot_id"], b"doc", "r.csv")
 
@@ -92,6 +106,9 @@ def test_delete_backtest_missing_id_raises_not_found(repo):
 
 
 def test_backtest_docs_not_deduped_across_identical_content(repo, make_bot):
+    # Contrast with code: two backtest runs are unlikely to produce
+    # byte-identical documents, so doc_key is a fresh uuid4 per call rather
+    # than a content hash -- no dedup should happen even for identical bytes.
     bot = make_bot()
     bt1 = repo.create_backtest(bot["bot_id"], b"same bytes", "a.csv")
     bt2 = repo.create_backtest(bot["bot_id"], b"same bytes", "b.csv")

@@ -54,9 +54,15 @@ def _bulk_insert_bots(sqlite_conn, strategy_id, count: int):
 
 
 def test_search_bots_performance_at_scale(repo, sqlite_conn, strategy_id):
+    # search_bots() is a single window-function query over bot_version --
+    # this is the test most likely to catch an accidental N+1 (e.g. a
+    # future refactor that queries per-bot in a loop instead of one JOIN).
     _bulk_insert_bots(sqlite_conn, strategy_id, 1500)
 
     def timed(call, repeats=5):
+        # min() of several repeats, not mean/median -- the standard
+        # anti-flake trick for wall-clock assertions: OS scheduling noise
+        # only ever adds time, so the fastest run is the truest measurement.
         return min(_time_once(call) for _ in range(repeats))
 
     default_elapsed = timed(lambda: repo.search_bots())

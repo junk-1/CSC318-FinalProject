@@ -1,3 +1,8 @@
+"""Tests for backend/sqlite_db.py: connection setup, schema bootstrap,
+additive migrations, and default-data seeding -- independent of
+BotRepository.
+"""
+
 import sqlite3
 
 from backend import config, sqlite_db
@@ -20,17 +25,27 @@ def test_init_schema_is_idempotent(sqlite_conn):
 
 
 def test_fresh_schema_already_has_source_filename_column(sqlite_conn):
+    # A brand-new install gets this column straight from schema.sql, so
+    # _migrate() should have nothing to do for it (see test_migrate_* below
+    # for the case where it actually needs to add the column).
     cols = {r["name"] for r in sqlite_conn.execute("PRAGMA table_info(bot_backtest)").fetchall()}
     assert "source_filename" in cols
 
 
 # ---- connect() pragmas -----------------------------------------------
+# Both PRAGMAs are per-connection, not persisted in the database file, so
+# they must be reissued by connect() every time -- these two tests catch
+# that reissuing being accidentally dropped.
 
 def test_connect_sets_foreign_keys_pragma_on(sqlite_conn):
+    # Required for ON DELETE CASCADE to actually fire (silently a no-op
+    # otherwise) -- see test_repository_delete.py's cascade tests.
     assert sqlite_conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
 
 def test_connect_sets_wal_journal_mode(sqlite_conn):
+    # WAL mode is what makes export_vault's Online Backup API call safe
+    # while the live connection is open and possibly mid-write.
     mode = sqlite_conn.execute("PRAGMA journal_mode").fetchone()[0]
     assert mode.lower() == "wal"
 
@@ -38,6 +53,9 @@ def test_connect_sets_wal_journal_mode(sqlite_conn):
 # ---- seed_strategies ----------------------------------------------------
 
 def test_seed_strategies_inserts_all_and_is_idempotent(sqlite_conn):
+    # seed_strategies() runs on every app startup (INSERT OR IGNORE against
+    # strategy_name's UNIQUE constraint), so it must be safe to call
+    # repeatedly without ever duplicating rows.
     sqlite_db.seed_strategies(sqlite_conn)
     sqlite_db.seed_strategies(sqlite_conn)  # second call must not duplicate
     count = sqlite_conn.execute("SELECT COUNT(*) FROM strategy_type").fetchone()[0]
